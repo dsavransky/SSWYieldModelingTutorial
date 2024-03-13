@@ -19,8 +19,6 @@ setuptools.setup(
           'numpy',
           'astropy',
           'sympy',
-          'notebook',
-          'jupyterlab',
           'matplotlib',
           'ipympl',
           'ipywidgets'
