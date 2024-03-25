@@ -16,11 +16,9 @@ Execute each of the code cells in this notebook in turn, or select 'Run all' fro
 
 You will be prompted to allow Colab to access your Google account - you must grant all access permissions requested in order for things to work properly. A new directory called 'SSW2024' (or whatever you change the name of the `ssw_dir` variable to be) will be created in your Google drive, and a copy of the repository holding the tutorial code will be cloned there.
 
----
-**NOTE**
 
-The colab setup only needs to be run once.  If you run it again, the final step will produce an error (because the code directory will already exist in your google dirve).
----
+> **NOTE**
+> The colab setup only needs to be run once.  If you run it again, the final step will produce an error (because the code directory will already exist in your google dirve).
 
 You can now proceed to the tutorial itself, either via the link at the bottom of the setup notebook ('Open the Tutorial') or by navigating directly to: https://colab.research.google.com/github/dsavransky/SSWYieldModelingTutorial/blob/main/Notebooks/
 
