@@ -24,6 +24,9 @@ You can now proceed to the tutorial itself, either via the link at the bottom of
 
 If you have previously run the setup notebook, you can go directly to the tutorial link without running the setup notebook again.
 
+> **IMPORTANT**
+> If you changed the `ssw_dir` variable in the setup notebook, you must update the `YMT_dir` variable in the second code block of the tutorial to match.
+
 
 ### Method 2: Local Installation
 
