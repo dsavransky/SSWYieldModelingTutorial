@@ -629,3 +629,153 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
     comp[comp < 1e-6] = 0.0
 
     return comp
+
+    def Cp_Cb_Csp(lam, deltaLam, D, occ_trans, fEZ, dMag, WA, mode):
+        """Calculates electron count rates for planet signal, background noise,
+        and speckle residuals.
+
+        Args:
+            lam (Quantity):
+                Central wavelength of observing bandpass (length unit)
+            deltaLam (Quantity):
+                Bandpass (length unit)
+            D (Quantity):
+                Telescope aperture (length unit)
+            occ_trans (Quantity):
+
+            sInds (~numpy.ndarray(int)):
+                Integer indices of the stars of interest
+            fZ (~astropy.units.Quantity(~numpy.ndarray(float))):
+                Surface brightness of local zodiacal light in units of 1/arcsec2
+            fEZ (~astropy.units.Quantity(~numpy.ndarray(float))):
+                Surface brightness of exo-zodiacal light in units of 1/arcsec2
+            dMag (~numpy.ndarray(float)):
+                Differences in magnitude between planets and their host star
+            WA (~astropy.units.Quantity(~numpy.ndarray(float))):
+                Working angles of the planets of interest in units of arcsec
+            mode (dict):
+                Selected observing mode
+
+        Returns:
+            tuple:
+                C_star (~astropy.units.Quantity(~numpy.ndarray(float))):
+                    Non-coronagraphic star count rate (1/s)
+                C_p0 (~astropy.units.Quantity(~numpy.ndarray(float))):
+                    Planet count rate (1/s)
+                C_sr (~astropy.units.Quantity(~numpy.ndarray(float))):
+                    Starlight residual count rate (1/s)
+                C_z (~astropy.units.Quantity(~numpy.ndarray(float))):
+                    Local zodi count rate (1/s)
+                C_ez (~astropy.units.Quantity(~numpy.ndarray(float))):
+                    Exozodi count rate (1/s)
+                C_dc (~astropy.units.Quantity(~numpy.ndarray(float))):
+                    Dark current count rate (1/s)
+                C_bl (~astropy.units.Quantity(~numpy.ndarray(float))):
+                    Background leak count rate (1/s)'
+                Npix (float):
+                    Number of pixels in photometric aperture
+        """
+
+        # Compute size of critically sampled photometric aperture
+        Omega = ((lam / 2 / D) ** 2).decompose().value
+
+        # coronagraph parameters
+        occ_trans = syst["occ_trans"](lam, WA)
+        core_thruput = syst["core_thruput"](lam, WA)
+        Omega = syst["core_area"](lam, WA)
+
+        # number of pixels per lenslet
+        pixPerLens = inst["lenslSamp"] ** 2.0
+
+        # number of detector pixels in the photometric aperture = Omega / theta^2
+        Npix = pixPerLens * (Omega / inst["pixelScale"] ** 2.0).decompose().value
+
+        # get stellar residual intensity in the planet PSF core
+        # if core_mean_intensity is None, fall back to using core_contrast
+        if syst["core_mean_intensity"] is None:
+            core_contrast = syst["core_contrast"](lam, WA)
+            core_intensity = core_contrast * core_thruput
+        else:
+            # if we're here, we're using the core mean intensity
+            core_mean_intensity = syst["core_mean_intensity"](
+                lam, WA, TL.diameter[sInds]
+            )
+            # also, if we're here, we must have a platescale defined
+            core_platescale = syst["core_platescale"]
+            # furthermore, if we're a coronagraph, we have to scale by wavelength
+            if not (syst["occulter"]) and (syst["lam"] != mode["lam"]):
+                core_platescale *= mode["lam"] / syst["lam"]
+
+            # core_intensity is the mean intensity times the number of map pixels
+            core_intensity = core_mean_intensity * Omega / core_platescale**2
+
+            # finally, if a contrast floor was set, make sure we're not violating it
+            if syst["contrast_floor"] is not None:
+                below_contrast_floor = (
+                    core_intensity / core_thruput < syst["contrast_floor"]
+                )
+                core_intensity[below_contrast_floor] = (
+                    syst["contrast_floor"] * core_thruput[below_contrast_floor]
+                )
+
+        # cast sInds to array
+        sInds = np.array(sInds, ndmin=1, copy=False)
+
+        # Star fluxes (ph/m^2/s)
+        flux_star = TL.starFlux(sInds, mode)
+
+        # ELECTRON COUNT RATES [ s^-1 ]
+        # non-coronagraphic star counts
+        C_star = flux_star * mode["losses"]
+        # planet counts:
+        C_p0 = (C_star * 10.0 ** (-0.4 * dMag) * core_thruput).to("1/s")
+        # starlight residual
+        C_sr = (C_star * core_intensity).to("1/s")
+        # zodiacal light
+        C_z = (mode["F0"] * mode["losses"] * fZ * Omega * occ_trans).to("1/s")
+        # exozodiacal light
+        if self.use_core_thruput_for_ez:
+            C_ez = (mode["F0"] * mode["losses"] * fEZ * Omega * core_thruput).to("1/s")
+        else:
+            C_ez = (mode["F0"] * mode["losses"] * fEZ * Omega * occ_trans).to("1/s")
+        # dark current
+        C_dc = Npix * inst["idark"]
+
+        # only calculate binary leak if you have a model and relevant data
+        # in the targelist
+        if hasattr(self, "binaryleakmodel") and all(
+            hasattr(TL, attr)
+            for attr in ["closesep", "closedm", "brightsep", "brightdm"]
+        ):
+
+            cseps = TL.closesep[sInds]
+            cdms = TL.closedm[sInds]
+            bseps = TL.brightsep[sInds]
+            bdms = TL.brightdm[sInds]
+
+            # don't double count where the bright star is the close star
+            repinds = (cseps == bseps) & (cdms == bdms)
+            bseps[repinds] = np.nan
+            bdms[repinds] = np.nan
+
+            crawleaks = self.binaryleakmodel(
+                (
+                    ((cseps * u.arcsec).to(u.rad)).value / lam * self.pupilDiam
+                ).decompose()
+            )
+            cleaks = crawleaks * 10 ** (-0.4 * cdms)
+            cleaks[np.isnan(cleaks)] = 0
+
+            brawleaks = self.binaryleakmodel(
+                (
+                    ((bseps * u.arcsec).to(u.rad)).value / lam * self.pupilDiam
+                ).decompose()
+            )
+            bleaks = brawleaks * 10 ** (-0.4 * bdms)
+            bleaks[np.isnan(bleaks)] = 0
+
+            C_bl = (cleaks + bleaks) * C_star * core_thruput
+        else:
+            C_bl = np.zeros(len(sInds)) / u.s
+
+        return C_star, C_p0, C_sr, C_z, C_ez, C_dc, C_bl, Npix
