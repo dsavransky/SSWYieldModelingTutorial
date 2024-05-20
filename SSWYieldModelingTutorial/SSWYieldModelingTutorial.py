@@ -630,31 +630,48 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
 
     return comp
 
-    def Cp_Cb_Csp(lam, deltaLam, D, occ_trans, fEZ, dMag, WA, mode):
+    def Cp_Cb_Csp(static_params, coronagraph, target):
         """Calculates electron count rates for planet signal, background noise,
         and speckle residuals.
 
         Args:
-            lam (Quantity):
-                Central wavelength of observing bandpass (length unit)
-            deltaLam (Quantity):
-                Bandpass (length unit)
-            D (Quantity):
-                Telescope aperture (length unit)
-            occ_trans (Quantity):
+            static_params (dict):
+                Dictionary of static parameters:
+                lam (Quantity):
+                    Central wavelength of observing bandpass (length unit)
+                deltaLam (Quantity):
+                    Bandpass (length unit)
+                D (Quantity):
+                    Telescope aperture diameter (length unit)
+                tau (float):
+                    Optical system throughput excluding effects of starlight suppression
+                    system
+                QE (float):
+                    Detector quantum efficiency
+                F0 (Quantity):
+                    Spectral flux density of zero-magnitude star in observing band
 
-            sInds (~numpy.ndarray(int)):
-                Integer indices of the stars of interest
-            fZ (~astropy.units.Quantity(~numpy.ndarray(float))):
-                Surface brightness of local zodiacal light in units of 1/arcsec2
-            fEZ (~astropy.units.Quantity(~numpy.ndarray(float))):
-                Surface brightness of exo-zodiacal light in units of 1/arcsec2
-            dMag (~numpy.ndarray(float)):
-                Differences in magnitude between planets and their host star
-            WA (~astropy.units.Quantity(~numpy.ndarray(float))):
-                Working angles of the planets of interest in units of arcsec
-            mode (dict):
-                Selected observing mode
+            cornagraph (dict):
+                Dictionary of coronagraph parameters for this observation:
+                tau_core (float):
+                    Throughput of starlight suppression system for point sources
+                tau_occ (float):
+                    Throughput of starlight suppression system for infinitely extended
+                    sources
+
+            target (dict):
+                Dictionary of target observing parameters:
+                mag_star (float):
+                    Apparennt magnitude of target star in observing band
+                deltaMag (float):
+                    Assumed delta magnitude of planet in observing band
+                zodi (Quantity)
+                    Surface brightness of local zodi in units of magnitude/arcsec^2.
+                    Input must have units of angle^{-2}.
+                exozodi (Quantity)
+                    Surface brightness of exozodi in units of magnitude/arcsec^2.
+                    Input must have units of angle^{-2}.
+
 
         Returns:
             tuple:
@@ -677,12 +694,11 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
         """
 
         # Compute size of critically sampled photometric aperture
-        Omega = ((lam / 2 / D) ** 2).decompose().value
+        Omega = ((static_params["lam"] / 2 / static_params["D"]) ** 2).decompose().value
 
         # coronagraph parameters
-        occ_trans = syst["occ_trans"](lam, WA)
-        core_thruput = syst["core_thruput"](lam, WA)
-        Omega = syst["core_area"](lam, WA)
+        occ_trans = coronagraph["tau_occ"]
+        core_thruput = coronagraph["tau_core"]
 
         # number of pixels per lenslet
         pixPerLens = inst["lenslSamp"] ** 2.0
