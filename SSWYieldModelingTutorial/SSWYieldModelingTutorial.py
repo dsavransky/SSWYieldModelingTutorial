@@ -630,6 +630,38 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
 
     return comp
 
+    def calc_intTime(Cp, Cb, M, SNR):
+        """Find the integration time to reach a required SNR given the planet and
+        background count rates as well as the optical system's noise floor.
+
+
+        Args:
+            Cp (arraylike Quantity):
+                Planet count rate (1/time units)
+            Cb (arraylike Quantity):
+                Background count rate (1/time units)
+            M (arraylike Quantity):
+                Noise floor count rate (1/time units)
+            SNR (float):
+                Required signal to noise ratio
+
+        Returns:
+            ~astropy.units.Quantity(~numpy.ndarray(float)):
+                Integration times
+
+        .. note::
+
+            All infeasible integration times should be returned as NaN values
+
+        """
+
+        intTime = (Cp + Cb) / ((Cp / SNR) ** 2 - M**2)
+
+        # infinite and negative values are set to NAN
+        intTime[np.isinf(intTime) | (intTime.value < 0.0)] = np.nan
+
+        return intTime
+
     def Cp_Cb_Csp(static_params, coronagraph, target):
         """Calculates electron count rates for planet signal, background noise,
         and speckle residuals.
@@ -643,6 +675,9 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
                     Bandpass (length unit)
                 D (Quantity):
                     Telescope aperture diameter (length unit)
+                obsc (float):
+                    Fraction of the primary aperture that is obscured by secondary and
+                    secondary support structures
                 tau (float):
                     Optical system throughput excluding effects of starlight suppression
                     system
@@ -693,12 +728,51 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
                     Number of pixels in photometric aperture
         """
 
-        # Compute size of critically sampled photometric aperture
-        Omega = ((static_params["lam"] / 2 / static_params["D"]) ** 2).decompose().value
+        # Compute telescope collecting area:
+        # this value should have units of length^2
+        A = np.pi * (static_params["D"] / 2) ** 2 * (1 - static_params["obsc"])
 
-        # coronagraph parameters
-        occ_trans = coronagraph["tau_occ"]
-        core_thruput = coronagraph["tau_core"]
+        # compute the common factor of A*tau*deltaLam*QE
+        # this value should have units of length^3
+        common_factor = (
+            A * static_params["tau"] * static_params["deltaLam"] * static_params["QE"]
+        )
+
+        # Compute the count rates of the planet
+        # this should have units of 1/time
+        C_star = static_params["F0"] * 10 ** (-0.4 * target["mag_star"])
+        C_p = (
+            C_star
+            * 10 ** (-0.4 * target["deltaMag"])
+            * common_factor
+            * coronagraph["tau_core"]
+        ).decompose()
+
+        # Compute size of critically sampled photometric aperture
+        # This should have units of angle^2
+        Omega = np.pi * ((static_params["lam"] / 2 / static_params["D"]) ** 2).to(
+            u.arcsec**2, equivalencies=u.dimensionless_angles()
+        )
+
+        # Compute the local and exozodi count rates
+        C_zodi = (
+            static_params["F0"]
+            * 10 ** (-0.4 * target["zodi"])
+            * Omega
+            / u.arcsec**2
+            * common_factor
+            * coronagraph["tau_occ"]
+        ).decompose()
+        # Compute the local and exozodi count rates
+        C_exozodi = (
+            static_params["F0"]
+            * 10 ** (-0.4 * target["exozodi"])
+            * Omega
+            / u.arcsec**2
+            * common_factor
+            * coronagraph["tau_occ"]
+        ).decompose()
+        C_z = C_zodi + C_exozodi
 
         # number of pixels per lenslet
         pixPerLens = inst["lenslSamp"] ** 2.0
@@ -710,7 +784,7 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
         # if core_mean_intensity is None, fall back to using core_contrast
         if syst["core_mean_intensity"] is None:
             core_contrast = syst["core_contrast"](lam, WA)
-            core_intensity = core_contrast * core_thruput
+            core_intensity = core_contrast * tau_core
         else:
             # if we're here, we're using the core mean intensity
             core_mean_intensity = syst["core_mean_intensity"](
@@ -728,10 +802,10 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
             # finally, if a contrast floor was set, make sure we're not violating it
             if syst["contrast_floor"] is not None:
                 below_contrast_floor = (
-                    core_intensity / core_thruput < syst["contrast_floor"]
+                    core_intensity / tau_core < syst["contrast_floor"]
                 )
                 core_intensity[below_contrast_floor] = (
-                    syst["contrast_floor"] * core_thruput[below_contrast_floor]
+                    syst["contrast_floor"] * tau_core[below_contrast_floor]
                 )
 
         # cast sInds to array
@@ -744,54 +818,17 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
         # non-coronagraphic star counts
         C_star = flux_star * mode["losses"]
         # planet counts:
-        C_p0 = (C_star * 10.0 ** (-0.4 * dMag) * core_thruput).to("1/s")
+        C_p0 = (C_star * 10.0 ** (-0.4 * dMag) * tau_core).to("1/s")
         # starlight residual
         C_sr = (C_star * core_intensity).to("1/s")
         # zodiacal light
-        C_z = (mode["F0"] * mode["losses"] * fZ * Omega * occ_trans).to("1/s")
+        C_z = (mode["F0"] * mode["losses"] * fZ * Omega * tau_occ).to("1/s")
         # exozodiacal light
-        if self.use_core_thruput_for_ez:
-            C_ez = (mode["F0"] * mode["losses"] * fEZ * Omega * core_thruput).to("1/s")
+        if self.use_tau_core_for_ez:
+            C_ez = (mode["F0"] * mode["losses"] * fEZ * Omega * tau_core).to("1/s")
         else:
-            C_ez = (mode["F0"] * mode["losses"] * fEZ * Omega * occ_trans).to("1/s")
+            C_ez = (mode["F0"] * mode["losses"] * fEZ * Omega * tau_occ).to("1/s")
         # dark current
         C_dc = Npix * inst["idark"]
 
-        # only calculate binary leak if you have a model and relevant data
-        # in the targelist
-        if hasattr(self, "binaryleakmodel") and all(
-            hasattr(TL, attr)
-            for attr in ["closesep", "closedm", "brightsep", "brightdm"]
-        ):
 
-            cseps = TL.closesep[sInds]
-            cdms = TL.closedm[sInds]
-            bseps = TL.brightsep[sInds]
-            bdms = TL.brightdm[sInds]
-
-            # don't double count where the bright star is the close star
-            repinds = (cseps == bseps) & (cdms == bdms)
-            bseps[repinds] = np.nan
-            bdms[repinds] = np.nan
-
-            crawleaks = self.binaryleakmodel(
-                (
-                    ((cseps * u.arcsec).to(u.rad)).value / lam * self.pupilDiam
-                ).decompose()
-            )
-            cleaks = crawleaks * 10 ** (-0.4 * cdms)
-            cleaks[np.isnan(cleaks)] = 0
-
-            brawleaks = self.binaryleakmodel(
-                (
-                    ((bseps * u.arcsec).to(u.rad)).value / lam * self.pupilDiam
-                ).decompose()
-            )
-            bleaks = brawleaks * 10 ** (-0.4 * bdms)
-            bleaks[np.isnan(bleaks)] = 0
-
-            C_bl = (cleaks + bleaks) * C_star * core_thruput
-        else:
-            C_bl = np.zeros(len(sInds)) / u.s
-
-        return C_star, C_p0, C_sr, C_z, C_ez, C_dc, C_bl, Npix
