@@ -630,15 +630,15 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
 
     return comp
 
-    def calc_intTime(Cp, Cb, M, SNR):
+    def calc_intTime(C_p, C_b, M, SNR):
         """Find the integration time to reach a required SNR given the planet and
         background count rates as well as the optical system's noise floor.
 
 
         Args:
-            Cp (arraylike Quantity):
+            C_p (arraylike Quantity):
                 Planet count rate (1/time units)
-            Cb (arraylike Quantity):
+            C_b (arraylike Quantity):
                 Background count rate (1/time units)
             M (arraylike Quantity):
                 Noise floor count rate (1/time units)
@@ -655,16 +655,16 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
 
         """
 
-        intTime = (Cp + Cb) / ((Cp / SNR) ** 2 - M**2)
+        intTime = (C_p + C_b) / ((C_p / SNR) ** 2 - M**2)
 
         # infinite and negative values are set to NAN
         intTime[np.isinf(intTime) | (intTime.value < 0.0)] = np.nan
 
         return intTime
 
-    def Cp_Cb_Csp(static_params, coronagraph, target):
+    def Cp_Cb_M(static_params, coronagraph, target):
         """Calculates electron count rates for planet signal, background noise,
-        and speckle residuals.
+        and noise floor for an observation.
 
         Args:
             static_params (dict):
@@ -685,6 +685,17 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
                     Detector quantum efficiency
                 F0 (Quantity):
                     Spectral flux density of zero-magnitude star in observing band
+                    (1/length^2/length/time unit)
+                pixelScale (Quantity):
+                    Instantaneous field of view of each detector pixel (angle unit)
+                darkCurrent (Quantity):
+                    Dark current in counts/second/pixel (1/time unit)
+                readNoise (float):
+                    Read noise in electrons/pixel/read
+                texp (Quantity):
+                    Single readout exposure time (time unit)
+                ppFac (float):
+                    Post-processing factor
 
             cornagraph (dict):
                 Dictionary of coronagraph parameters for this observation:
@@ -710,22 +721,13 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
 
         Returns:
             tuple:
-                C_star (~astropy.units.Quantity(~numpy.ndarray(float))):
-                    Non-coronagraphic star count rate (1/s)
-                C_p0 (~astropy.units.Quantity(~numpy.ndarray(float))):
-                    Planet count rate (1/s)
-                C_sr (~astropy.units.Quantity(~numpy.ndarray(float))):
-                    Starlight residual count rate (1/s)
-                C_z (~astropy.units.Quantity(~numpy.ndarray(float))):
-                    Local zodi count rate (1/s)
-                C_ez (~astropy.units.Quantity(~numpy.ndarray(float))):
-                    Exozodi count rate (1/s)
-                C_dc (~astropy.units.Quantity(~numpy.ndarray(float))):
-                    Dark current count rate (1/s)
-                C_bl (~astropy.units.Quantity(~numpy.ndarray(float))):
-                    Background leak count rate (1/s)'
-                Npix (float):
-                    Number of pixels in photometric aperture
+                C_p (~astropy.units.Quantity(~numpy.ndarray(float))):
+                    Planet signal electron count rate in units of 1/s
+                C_b (~astropy.units.Quantity(~numpy.ndarray(float))):
+                    Background noise electron count rate in units of 1/s
+                M (~astropy.units.Quantity(~numpy.ndarray(float))):
+                    Residual starlight spatial structure (systematic error)
+                    in units of 1/s
         """
 
         # Compute telescope collecting area:
@@ -755,6 +757,7 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
         )
 
         # Compute the local and exozodi count rates
+        # this should have units of 1/time
         C_zodi = (
             static_params["F0"]
             * 10 ** (-0.4 * target["zodi"])
@@ -772,63 +775,31 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
             * common_factor
             * coronagraph["tau_occ"]
         ).decompose()
-        C_z = C_zodi + C_exozodi
 
-        # number of pixels per lenslet
-        pixPerLens = inst["lenslSamp"] ** 2.0
+        # Compute the count rates of the starlight residual
+        # this should have units of 1/time
+        C_sr = (
+            C_star * common_factor * coronagraph["contrast"] * coronagraph["tau_core"]
+        ).decompose()
 
         # number of detector pixels in the photometric aperture = Omega / theta^2
-        Npix = pixPerLens * (Omega / inst["pixelScale"] ** 2.0).decompose().value
+        # this value should be unitless
+        Npix = (Omega / static_params["pixelScale"] ** 2.0).decompose().value
 
-        # get stellar residual intensity in the planet PSF core
-        # if core_mean_intensity is None, fall back to using core_contrast
-        if syst["core_mean_intensity"] is None:
-            core_contrast = syst["core_contrast"](lam, WA)
-            core_intensity = core_contrast * tau_core
-        else:
-            # if we're here, we're using the core mean intensity
-            core_mean_intensity = syst["core_mean_intensity"](
-                lam, WA, TL.diameter[sInds]
-            )
-            # also, if we're here, we must have a platescale defined
-            core_platescale = syst["core_platescale"]
-            # furthermore, if we're a coronagraph, we have to scale by wavelength
-            if not (syst["occulter"]) and (syst["lam"] != mode["lam"]):
-                core_platescale *= mode["lam"] / syst["lam"]
+        # Compute the dark current count rate
+        # this should have units of 1/time
+        C_dc = Npix * static_params["darkCurrent"]
 
-            # core_intensity is the mean intensity times the number of map pixels
-            core_intensity = core_mean_intensity * Omega / core_platescale**2
+        # Compute the read noise count rate
+        # this should have units of 1/time
+        C_rn = Npix * static_params["readNoise"] / static_params["texp"]
 
-            # finally, if a contrast floor was set, make sure we're not violating it
-            if syst["contrast_floor"] is not None:
-                below_contrast_floor = (
-                    core_intensity / tau_core < syst["contrast_floor"]
-                )
-                core_intensity[below_contrast_floor] = (
-                    syst["contrast_floor"] * tau_core[below_contrast_floor]
-                )
+        # total background signal rate
+        # this should have units of 1/time
+        C_b = C_sr + C_zodi + C_exozodi + C_dc + C_rn
 
-        # cast sInds to array
-        sInds = np.array(sInds, ndmin=1, copy=False)
+        # compute the noise floor rate
+        # this should have units of 1/time
+        M = C_sr * static_params["ppFac"]
 
-        # Star fluxes (ph/m^2/s)
-        flux_star = TL.starFlux(sInds, mode)
-
-        # ELECTRON COUNT RATES [ s^-1 ]
-        # non-coronagraphic star counts
-        C_star = flux_star * mode["losses"]
-        # planet counts:
-        C_p0 = (C_star * 10.0 ** (-0.4 * dMag) * tau_core).to("1/s")
-        # starlight residual
-        C_sr = (C_star * core_intensity).to("1/s")
-        # zodiacal light
-        C_z = (mode["F0"] * mode["losses"] * fZ * Omega * tau_occ).to("1/s")
-        # exozodiacal light
-        if self.use_tau_core_for_ez:
-            C_ez = (mode["F0"] * mode["losses"] * fEZ * Omega * tau_core).to("1/s")
-        else:
-            C_ez = (mode["F0"] * mode["losses"] * fEZ * Omega * tau_occ).to("1/s")
-        # dark current
-        C_dc = Npix * inst["idark"]
-
-
+        return C_p, C_b, M
