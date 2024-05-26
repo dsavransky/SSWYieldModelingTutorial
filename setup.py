@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="SSWYieldModelingTutorial",
-    version="0.0.1",
+    version="1.0.0",
     author="Dmitry Savransky",
     author_email="ds264@cornell.edu",
     description="An interactive tutorial on yield modeling.",
@@ -21,7 +21,8 @@ setuptools.setup(
           'sympy',
           'matplotlib',
           'ipympl',
-          'ipywidgets'
+          'ipywidgets',
+          'pandas',
     ],
     license="MIT",
     classifiers=[

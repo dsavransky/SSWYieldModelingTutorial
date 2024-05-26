@@ -6,6 +6,7 @@ import scipy.interpolate
 import pkg_resources
 import os
 import pickle
+import pandas
 
 
 def calc_s_dMag(a, e, I, w, R_P, p, nu):  # noqa: E741
@@ -630,176 +631,271 @@ def calc_completeness(Cpdf, sax, dMagax, smin, smax, dMaglim, L=1):
 
     return comp
 
-    def calc_intTime(C_p, C_b, M, SNR):
-        """Find the integration time to reach a required SNR given the planet and
-        background count rates as well as the optical system's noise floor.
+
+def calc_intTime(C_p, C_b, M, SNR):
+    """Find the integration time to reach a required SNR given the planet and
+    background count rates as well as the optical system's noise floor.
 
 
-        Args:
-            C_p (arraylike Quantity):
-                Planet count rate (1/time units)
-            C_b (arraylike Quantity):
-                Background count rate (1/time units)
-            M (arraylike Quantity):
-                Noise floor count rate (1/time units)
-            SNR (float):
-                Required signal to noise ratio
+    Args:
+        C_p (arraylike Quantity):
+            Planet count rate (1/time units)
+        C_b (arraylike Quantity):
+            Background count rate (1/time units)
+        M (arraylike Quantity):
+            Noise floor count rate (1/time units)
+        SNR (float):
+            Required signal to noise ratio
 
-        Returns:
-            ~astropy.units.Quantity(~numpy.ndarray(float)):
-                Integration times
+    Returns:
+        ~astropy.units.Quantity(~numpy.ndarray(float)):
+            Integration times
 
-        .. note::
+    .. note::
 
-            All infeasible integration times should be returned as NaN values
+        All infeasible integration times should be returned as NaN values
 
-        """
+    """
 
-        intTime = (C_p + C_b) / ((C_p / SNR) ** 2 - M**2)
+    intTime = (C_p + C_b) / ((C_p / SNR) ** 2 - M**2)
 
-        # infinite and negative values are set to NAN
-        intTime[np.isinf(intTime) | (intTime.value < 0.0)] = np.nan
+    # infinite and negative values are set to NAN
+    intTime[np.isinf(intTime) | (intTime.value < 0.0)] = np.nan
 
-        return intTime
-
-    def Cp_Cb_M(static_params, coronagraph, target):
-        """Calculates electron count rates for planet signal, background noise,
-        and noise floor for an observation.
-
-        Args:
-            static_params (dict):
-                Dictionary of static parameters:
-                lam (Quantity):
-                    Central wavelength of observing bandpass (length unit)
-                deltaLam (Quantity):
-                    Bandpass (length unit)
-                D (Quantity):
-                    Telescope aperture diameter (length unit)
-                obsc (float):
-                    Fraction of the primary aperture that is obscured by secondary and
-                    secondary support structures
-                tau (float):
-                    Optical system throughput excluding effects of starlight suppression
-                    system
-                QE (float):
-                    Detector quantum efficiency
-                F0 (Quantity):
-                    Spectral flux density of zero-magnitude star in observing band
-                    (1/length^2/length/time unit)
-                pixelScale (Quantity):
-                    Instantaneous field of view of each detector pixel (angle unit)
-                darkCurrent (Quantity):
-                    Dark current in counts/second/pixel (1/time unit)
-                readNoise (float):
-                    Read noise in electrons/pixel/read
-                texp (Quantity):
-                    Single readout exposure time (time unit)
-                ppFac (float):
-                    Post-processing factor
-
-            cornagraph (dict):
-                Dictionary of coronagraph parameters for this observation:
-                tau_core (float):
-                    Throughput of starlight suppression system for point sources
-                tau_occ (float):
-                    Throughput of starlight suppression system for infinitely extended
-                    sources
-
-            target (dict):
-                Dictionary of target observing parameters:
-                mag_star (float):
-                    Apparennt magnitude of target star in observing band
-                deltaMag (float):
-                    Assumed delta magnitude of planet in observing band
-                zodi (Quantity)
-                    Surface brightness of local zodi in units of magnitude/arcsec^2.
-                    Input must have units of angle^{-2}.
-                exozodi (Quantity)
-                    Surface brightness of exozodi in units of magnitude/arcsec^2.
-                    Input must have units of angle^{-2}.
+    return intTime
 
 
-        Returns:
-            tuple:
-                C_p (~astropy.units.Quantity(~numpy.ndarray(float))):
-                    Planet signal electron count rate in units of 1/s
-                C_b (~astropy.units.Quantity(~numpy.ndarray(float))):
-                    Background noise electron count rate in units of 1/s
-                M (~astropy.units.Quantity(~numpy.ndarray(float))):
-                    Residual starlight spatial structure (systematic error)
-                    in units of 1/s
-        """
+def Cp_Cb_M(static_params, coronagraph, target, deltaMag):
+    """Calculates electron count rates for planet signal, background noise,
+    and noise floor for an observation.
 
-        # Compute telescope collecting area:
-        # this value should have units of length^2
-        A = np.pi * (static_params["D"] / 2) ** 2 * (1 - static_params["obsc"])
+    Args:
+        static_params (dict):
+            Dictionary of static parameters:
+            lam (Quantity):
+                Central wavelength of observing bandpass (length unit)
+            deltaLam (Quantity):
+                Bandpass (length unit)
+            D (Quantity):
+                Telescope aperture diameter (length unit)
+            obsc (float):
+                Fraction of the primary aperture that is obscured by secondary and
+                secondary support structures
+            tau (float):
+                Optical system throughput excluding effects of starlight suppression
+                system
+            QE (float):
+                Detector quantum efficiency
+            F0 (Quantity):
+                Spectral flux density of zero-magnitude star in observing band
+                (1/length^2/length/time unit)
+            pixelScale (Quantity):
+                Instantaneous field of view of each detector pixel (angle unit)
+            darkCurrent (Quantity):
+                Dark current in counts/second/pixel (1/time unit)
+            readNoise (float):
+                Read noise in electrons/pixel/read
+            texp (Quantity):
+                Single readout exposure time (time unit)
+            ppFac (float):
+                Post-processing factor
 
-        # compute the common factor of A*tau*deltaLam*QE
-        # this value should have units of length^3
-        common_factor = (
-            A * static_params["tau"] * static_params["deltaLam"] * static_params["QE"]
-        )
+        cornagraph (dict):
+            Dictionary of coronagraph parameters for this observation:
+            tau_core (float):
+                Throughput of starlight suppression system for point sources
+            tau_occ (float):
+                Throughput of starlight suppression system for infinitely extended
+                sources
 
-        # Compute the count rates of the planet
-        # this should have units of 1/time
-        C_star = static_params["F0"] * 10 ** (-0.4 * target["mag_star"])
-        C_p = (
-            C_star
-            * 10 ** (-0.4 * target["deltaMag"])
-            * common_factor
-            * coronagraph["tau_core"]
-        ).decompose()
+        target (dict):
+            Dictionary of target observing parameters:
+            mag_star (float):
+                Apparennt magnitude of target star in observing band
+            zodi (Quantity)
+                Surface brightness of local zodi in units of magnitude/arcsec^2.
+                Input must have units of angle^{-2}.
+            exozodi (Quantity)
+                Surface brightness of exozodi in units of magnitude/arcsec^2.
+                Input must have units of angle^{-2}.
+        deltaMag (float):
+                Assumed delta magnitude of planet in observing band
 
-        # Compute size of critically sampled photometric aperture
-        # This should have units of angle^2
-        Omega = np.pi * ((static_params["lam"] / 2 / static_params["D"]) ** 2).to(
-            u.arcsec**2, equivalencies=u.dimensionless_angles()
-        )
 
-        # Compute the local and exozodi count rates
-        # this should have units of 1/time
-        C_zodi = (
-            static_params["F0"]
-            * 10 ** (-0.4 * target["zodi"])
-            * Omega
-            / u.arcsec**2
-            * common_factor
-            * coronagraph["tau_occ"]
-        ).decompose()
-        # Compute the local and exozodi count rates
-        C_exozodi = (
-            static_params["F0"]
-            * 10 ** (-0.4 * target["exozodi"])
-            * Omega
-            / u.arcsec**2
-            * common_factor
-            * coronagraph["tau_occ"]
-        ).decompose()
+    Returns:
+        tuple:
+            C_p (~astropy.units.Quantity(~numpy.ndarray(float))):
+                Planet signal electron count rate in units of 1/s
+            C_b (~astropy.units.Quantity(~numpy.ndarray(float))):
+                Background noise electron count rate in units of 1/s
+            M (~astropy.units.Quantity(~numpy.ndarray(float))):
+                Residual starlight spatial structure (systematic error)
+                in units of 1/s
+    """
 
-        # Compute the count rates of the starlight residual
-        # this should have units of 1/time
-        C_sr = (
-            C_star * common_factor * coronagraph["contrast"] * coronagraph["tau_core"]
-        ).decompose()
+    # Compute telescope collecting area:
+    # this value should have units of length^2
+    A = np.pi * (static_params["D"] / 2) ** 2 * (1 - static_params["obsc"])
 
-        # number of detector pixels in the photometric aperture = Omega / theta^2
-        # this value should be unitless
-        Npix = (Omega / static_params["pixelScale"] ** 2.0).decompose().value
+    # compute the common factor of A*tau*deltaLam*QE
+    # this value should have units of length^3
+    eta = A * static_params["tau"] * static_params["deltaLam"] * static_params["QE"]
 
-        # Compute the dark current count rate
-        # this should have units of 1/time
-        C_dc = Npix * static_params["darkCurrent"]
+    # Compute the count rates of the planet
+    # this should have units of 1/time
+    C_star = static_params["F0"] * 10 ** (-0.4 * target["mag_star"])
+    C_p = (C_star * 10 ** (-0.4 * deltaMag) * eta * coronagraph["tau_core"]).decompose()
 
-        # Compute the read noise count rate
-        # this should have units of 1/time
-        C_rn = Npix * static_params["readNoise"] / static_params["texp"]
+    # Compute size of critically sampled photometric aperture
+    # This should have units of angle^2
+    Omega = np.pi * ((static_params["lam"] / 2 / static_params["D"]) ** 2).to(
+        u.arcsec**2, equivalencies=u.dimensionless_angles()
+    )
 
-        # total background signal rate
-        # this should have units of 1/time
-        C_b = C_sr + C_zodi + C_exozodi + C_dc + C_rn
+    # Compute the local and exozodi count rates
+    # this should have units of 1/time
+    C_zodi = (
+        static_params["F0"]
+        * 10 ** (-0.4 * target["zodi"])
+        * Omega
+        / u.arcsec**2
+        * eta
+        * coronagraph["tau_occ"]
+    ).decompose()
+    # Compute the local and exozodi count rates
+    C_exozodi = (
+        static_params["F0"]
+        * 10 ** (-0.4 * target["exozodi"])
+        * Omega
+        / u.arcsec**2
+        * eta
+        * coronagraph["tau_occ"]
+    ).decompose()
 
-        # compute the noise floor rate
-        # this should have units of 1/time
-        M = C_sr * static_params["ppFac"]
+    # Compute the count rates of the starlight residual
+    # this should have units of 1/time
+    C_sr = (
+        C_star * eta * coronagraph["contrast"] * coronagraph["tau_core"]
+    ).decompose()
 
-        return C_p, C_b, M
+    # number of detector pixels in the photometric aperture = Omega / theta^2
+    # this value should be unitless
+    Npix = (Omega / static_params["pixelScale"] ** 2.0).decompose().value
+
+    # Compute the dark current count rate
+    # this should have units of 1/time
+    C_dc = Npix * static_params["darkCurrent"]
+
+    # Compute the read noise count rate
+    # this should have units of 1/time
+    C_rn = Npix * static_params["readNoise"] / static_params["texp"]
+
+    # total background signal rate
+    # this should have units of 1/time
+    C_b = C_sr + C_zodi + C_exozodi + C_dc + C_rn
+
+    # compute the noise floor rate
+    # this should have units of 1/time
+    M = C_sr * static_params["ppFac"]
+
+    return C_p, C_b, M
+
+
+def calc_dMag_from_intTime(static_params, coronagraph, target, SNR, intTime):
+    """Find the achievable deltaMag for an observation for given SNR and integration
+    time.
+
+    Args:
+        static_params (dict):
+            Dictionary of static parameters. See Cp_Cb_M for details.
+
+        cornagraph (dict):
+            Dictionary of coronagraph parameters for this observation.
+            See Cp_Cb_M for details.
+        target (dict):
+            Dictionary of target observing parameters. See Cp_Cb_M for details.
+        SNR (float):
+            Required signal to noise ratio
+        intTime (Quantity):
+            Integration time. Units of time.
+
+    Returns:
+        float:
+            Achievable deltaMag
+
+    """
+
+    # Get values of C_b and M (first output is not needed)
+    # Note that the deltaMag input here is entirely arbitrary, as we're not
+    # using the C_p output.
+    _, C_b, M = Cp_Cb_M(static_params, coronagraph, target, 0)
+
+    # Compute C_p
+    # This should have units of 1/time
+    C_p = (SNR / 2 / intTime) * (
+        SNR + np.sqrt(4 * M**2 * intTime**2 + 4 * C_b * intTime + SNR**2)
+    )
+
+    # compute the common factor of A*tau*deltaLam*QE
+    # this value should have units of length^3
+    A = np.pi * (static_params["D"] / 2) ** 2 * (1 - static_params["obsc"])
+    eta = A * static_params["tau"] * static_params["deltaLam"] * static_params["QE"]
+
+    # Compute the deltaMag corresponding to the inputs
+    # This should be unitless
+    deltaMag = -target["mag_star"] - 2.5 * np.log10(
+        C_p / (static_params["F0"] * eta * coronagraph["tau_core"])
+    )
+
+    return deltaMag.value
+
+
+def load_HWO_MissionStars():
+    """Load HWO Mission Star List
+
+    Args:
+        None
+
+    Returns:
+        pandas.DataFrame:
+            The target list
+    """
+
+    fname = pkg_resources.resource_filename(
+        "SSWYieldModelingTutorial",
+        os.path.join("data", "HWOStarList_20240526125022.pkl"),
+    )
+
+    data = pandas.read_pickle(fname)
+
+    return data
+
+
+def load_HWO_MissionStars_koMap():
+    """Load HWO Mission Star List sample keepout map
+
+    Args:
+        None
+
+    Returns:
+        tuple:
+            koTimes (~astropy.time.Time):
+                Absolute MJD mission times from start to end in steps of 1 d
+            koMap (~numpy.ndarray(bool)):
+                True means a target unobstructed and observable, and False means a
+                target unobservable due to obstructions in the keepout zone.
+            targetNames (~numpy.ndarray(object)):
+                Target names (for consistency checking)
+
+
+    """
+
+    fname = pkg_resources.resource_filename(
+        "SSWYieldModelingTutorial",
+        os.path.join("data", "HWOStarList_koMap.pkl"),
+    )
+
+    with open(fname, "rb") as f:
+        data = pickle.load(f)
+
+    return data["koTimes"], data["koMap"], data["targetNames"]
