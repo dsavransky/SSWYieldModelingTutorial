@@ -899,3 +899,52 @@ def load_HWO_MissionStars_koMap():
         data = pickle.load(f)
 
     return data["koTimes"], data["koMap"], data["targetNames"]
+
+
+def check_target_availbility(koTimes, koMap, targetInds, obsStart, obsDurations):
+    """Check whether targets are available (out of keepout) for proposed observations
+
+    Args:
+        koTimes (~astropy.time.Time):
+            Absolute MJD mission times from start to end in steps of 1 d
+        koMap (~numpy.ndarray(bool)):
+            True means a target unobstructed and observable, and False means a
+            target unobservable due to obstructions in the keepout zone.
+        targetInds (arraylike):
+            Indices of targets to check
+        obsStart (~astropy.time.Time):
+            Observation start time (absolute time)
+        obsDurations (Quantity):
+            Duration of observation(s). Time units.
+
+
+    Returns:
+        ~numpy.ndarray(bool):
+            Boolean array of target availability. True means the target is available
+            for observation and false means it is not. The size of this array should be
+            the same as the size of targetInds.
+
+    .. note::
+
+        The size of targetInds and obsDurations must be the same.
+
+    """
+
+    # calculate observation end times:
+    obsEnds = obsStart + obsDurations
+
+    # find index  of start time in koTimes
+    startInd = np.searchsorted(koTimes.value, obsStart.value)
+
+    # find indices of end times in koTimes
+    endInds = np.searchsorted(koTimes.value, obsEnds.value)
+
+    #
+    avail = np.array(
+        [
+            np.all(koMap[sInd, startInd : endInds[j]])  # noqa
+            for j, sInd in enumerate(targetInds)
+        ]
+    )
+
+    return avail
