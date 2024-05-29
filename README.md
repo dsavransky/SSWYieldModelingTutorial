@@ -11,7 +11,8 @@ These materials can be run entirely via your browser, with no local installation
 Navigate to:
 
 https://colab.research.google.com/github/dsavransky/SSWYieldModelingTutorial/blob/main/Notebooks/SSW2024_YieldModelingTutorial1_Setup.ipynb
-Execute each of the code cells in this notebook in turn, or select 'Run all' from the 'Runtime' menu.  
+
+Execute each of the code cells in this notebook tagged for Colab setup (&#128992;).  
 
 You will be prompted to allow Colab to access your Google account - you must grant all access permissions requested in order for things to work properly. A new directory called 'SSW2024' (or whatever you change the name of the `ssw_dir` variable to be) will be created in your Google drive, and a copy of the repository holding the tutorial code will be cloned there.
 
