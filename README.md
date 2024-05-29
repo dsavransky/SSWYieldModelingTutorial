@@ -10,8 +10,7 @@ These materials can be run entirely via your browser, with no local installation
 
 Navigate to:
 
-https://colab.research.google.com/github/dsavransky/SSWYieldModelingTutorial/blob/main/Notebooks/SSWYieldModelingTutorial1_colab_Setup.ipynb
-
+https://colab.research.google.com/github/dsavransky/SSWYieldModelingTutorial/blob/main/Notebooks/SSW2024_YieldModelingTutorial1_Setup.ipynb
 Execute each of the code cells in this notebook in turn, or select 'Run all' from the 'Runtime' menu.  
 
 You will be prompted to allow Colab to access your Google account - you must grant all access permissions requested in order for things to work properly. A new directory called 'SSW2024' (or whatever you change the name of the `ssw_dir` variable to be) will be created in your Google drive, and a copy of the repository holding the tutorial code will be cloned there.
@@ -30,7 +29,9 @@ If you have previously run the setup notebook, you can go directly to the tutori
 
 ### Method 2: Local Installation
 
-If you wish to run this tutorial without an internet connection, you must install the associated materials locally on your own machine.  We recommend using a dedicated virtual python environment.  The instructions below assume that you have python (version 3.10 or higher recommended) and pip installed and working on your machine. For help with that, start here: https://wiki.python.org/moin/BeginnersGuide/. We'll assume that python and pip are runnable as `python` and `pip`, respectively, but they might be called `python3` and `pip3` (or something else) on your particular system. These instructions are based on working in a terminal (macOS/Linux) or command prompt/PowerShell (Windows).
+If you wish to run this tutorial without an internet connection, you must install the associated materials locally on your own machine. The setup notebook (linked above in the Google Colab section) will do this for you, or you can do it manually, as described below. 
+
+We recommend using a dedicated virtual python environment.  The instructions below assume that you have python (version 3.10 or higher recommended) and pip installed and working on your machine. For help with that, start here: https://wiki.python.org/moin/BeginnersGuide/. We'll assume that python and pip are runnable as `python` and `pip`, respectively, but they might be called `python3` and `pip3` (or something else) on your particular system. These instructions are based on working in a terminal (macOS/Linux) or command prompt/PowerShell (Windows).
 
 1. Download or clone this repository to your computer (https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository)
 2. Create a python virtual environment (we'll call ours `YieldModelingTutorial` but you can replace this with any name you like). In a terminal/command prompt/powershell/etc, navigate to a directory where you want to create the virtual environment and run:
