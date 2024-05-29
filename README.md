@@ -20,7 +20,7 @@ You will be prompted to allow Colab to access your Google account - you must gra
 > **NOTE**
 > The colab setup only needs to be run once.  If you run it again, the final step will produce an error (because the code directory will already exist in your google dirve).
 
-You can now proceed to the tutorial itself, either via the link at the bottom of the setup notebook ('Open the Tutorial') or by navigating directly to: https://colab.research.google.com/github/dsavransky/SSWYieldModelingTutorial/blob/main/Notebooks/
+You can now proceed to the tutorial itself, either via the link at the bottom of the setup notebook ('Open the Tutorial') or by navigating directly to: https://colab.research.google.com/github/dsavransky/SSWYieldModelingTutorial/blob/main/Notebooks/SSW2024_YieldModelingTutorial1.ipynb
 
 If you have previously run the setup notebook, you can go directly to the tutorial link without running the setup notebook again.
 
