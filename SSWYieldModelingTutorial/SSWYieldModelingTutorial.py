@@ -939,7 +939,7 @@ def check_target_availbility(koTimes, koMap, targetInds, obsStart, obsDurations)
     # find indices of end times in koTimes
     endInds = np.searchsorted(koTimes.value, obsEnds.value)
 
-    #
+    # compute availbility
     avail = np.array(
         [
             np.all(koMap[sInd, startInd : endInds[j]])  # noqa
