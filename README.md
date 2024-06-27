@@ -27,6 +27,7 @@ If you have previously run the setup notebook, you can go directly to the tutori
 > **IMPORTANT**
 > If you changed the `ssw_dir` variable in the setup notebook, you must update the `YMT_dir` variable in the second code block of the tutorial to match.
 
+The open-ended projects associated with this tutorial can be accessed at: https://colab.research.google.com/github/dsavransky/SSWYieldModelingTutorial/blob/main/Notebooks/SSW2024_YieldModelingGroupProjects.ipynb
 
 ### Method 2: Local Installation
 
